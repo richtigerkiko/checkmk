@@ -6,7 +6,9 @@
 
 import json
 
-from typing import TypedDict, Sequence
+from typing import Mapping, Tuple, TypedDict, Sequence
+
+from cmk.base.api.agent_based.checking_classes import Metric
 
 from .agent_based_api.v1 import register, type_defs, Service, Result, State
 
@@ -45,20 +47,24 @@ register.agent_section(
 )
 
 
-def check_mxmail(section: Section) -> type_defs.CheckResult:
+def check_mxmail(
+    params: Mapping[str, Tuple[int, int]], section: Section
+) -> type_defs.CheckResult:
     """..."""
+    level_warn, level_crit = params["levels"]
     total_count = section["total_count"]
     yield Result(state=State.OK, summary=f"Total: {total_count}")
+    yield Metric(name="mails_total_count", value=total_count)
     state = State.OK
     unread_count = section["unread_count"]
-    if unread_count > 9:
+    if unread_count > level_crit:
         state = State.CRIT
-    elif unread_count > 4:
+    elif unread_count > level_warn:
         state = State.WARN
     yield Result(
         state=state,
         summary=f"Unread emails: {unread_count}",
-        details="\n".join(section["unread_headers"]),
+        details="Headers: " + "\n".join(section["unread_headers"]),
     )
 
 
@@ -67,4 +73,6 @@ register.check_plugin(
     service_name="Mails",
     discovery_function=discovery_mxmail,
     check_function=check_mxmail,
+    check_ruleset_name="mxzimbra",
+    check_default_parameters={"levels": (4, 9)},
 )

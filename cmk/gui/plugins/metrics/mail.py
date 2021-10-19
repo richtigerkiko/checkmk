@@ -26,6 +26,12 @@ from cmk.gui.plugins.metrics import (
 # Title are always lower case - except the first character!
 # Colors: See indexed_color() in cmk/gui/plugins/metrics/utils.py
 
+metric_info["mails_total_count"] = {
+    "title": _("Total mails"),
+    "unit": "count",
+    "color": "#00ff00",
+}
+
 metric_info["mails_received_time"] = {
     "title": _("Received mails"),
     "unit": "s",
