@@ -69,9 +69,9 @@ def parse_snmp(string_table: StringTable) -> Section:
 
 
 def discover_sophos_license(section: Section) -> DiscoveryResult:
-    for licname, soplic in section.items():
+    for licname in section:
         print(f"debug: {licname}")
-    yield from (Service(item=licname) for licname, soplic in section.items())
+    yield from (Service(item=licname) for licname in section)
 
 
 def check_sophos_license(item: str, section: Section) -> CheckResult:
