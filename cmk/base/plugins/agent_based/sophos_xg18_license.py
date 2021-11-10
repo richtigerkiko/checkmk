@@ -18,61 +18,74 @@
 # .1.3.6.1.4.1.2604.5.1.5.8.1.0 2 --> SFOS-FIREWALL-MIB::sfosEnhancedPlusLicRegStatus.0
 # .1.3.6.1.4.1.2604.5.1.5.8.2.0 fail --> SFOS-FIREWALL-MIB::sfosEnhancedPlusLicExpiryDate.0
 
-from .sophos_types import DETECT_SophosX18, SophosSubscriptionStatusType
-from .agent_based_api.v1 import register, SNMPTree, Service, Result, State, HostLabel
-from .agent_based_api.v1.type_defs import CheckResult, DiscoveryResult, InventoryResult, StringTable, HostLabelGenerator
-from typing import List, Optional, NamedTuple
 from datetime import datetime
+from typing import Dict
+
+from .agent_based_api.v1 import register, SNMPTree, Result, State, Service
+from .agent_based_api.v1.type_defs import StringTable, DiscoveryResult, CheckResult
+# from checkmk.cmk.base.api.agent_based.section_classes import SNMPTree
+from .sophos_types import DETECT_SophosX18, SophosLicense, SophosSubscriptionStatusType
 
 
-class SophosLicense(NamedTuple):
-    LicenseLabel: str
-    LicenseStatus: SophosSubscriptionStatusType
-    LicenseExiprationDate: datetime
-    LicenseName: str
 
-def get_license_name(i: int, row: str):
-            if(i == 0):
-                return "BaseLicense"
-            elif(i == 2):
-                return "Network Protection"
-            elif(i == 4):
-                return "Web Protection"
-            elif(i == 6):
-                return "Mail Protection"
-            elif(i == 8):
-                return "Webserver Protection"
-            elif(i == 10):
-                return "Sandstorm"
-            elif(i == 12):
-                return "Enhanced Support"
-            elif(i == 14):
-                return "Enhanced Support Plus"
-            else:
-                return f"Unknown license: {row}"
+Section = Dict[str, SophosLicense]
 
-def parse_snmp(string_table: StringTable) -> Optional[List[SophosLicense]]:
-    if not string_table:
-        return None
-    returnList = [SophosLicense]
-    snmpresult = string_table[0]
-    for i, row in enumerate(snmpresult):
+
+def get_license_name(i: int, row: str):  # function to get the license name from snmp parser
+    if(i == 0):
+        return "BaseLicense"
+    elif(i == 2):
+        return "Network Protection"
+    elif(i == 4):
+        return "Web Protection"
+    elif(i == 6):
+        return "Mail Protection"
+    elif(i == 8):
+        return "Webserver Protection"
+    elif(i == 10):
+        return "Sandstorm"
+    elif(i == 12):
+        return "Enhanced Support"
+    elif(i == 14):
+        return "Enhanced Support Plus"
+    else:
+        return f"Unknown license: {row}"
+
+
+def parse_snmp(string_table: StringTable) -> Section:
+    snmpresult = string_table[0]  # fetched snmp data is array length 1 so wie just neet the first one
+    parse_result:Section = {}  # init dictionary
+    for i, row in enumerate(snmpresult):  # with this for loop i fill the parse_result dcitionary
         print(f"debug: adding row '{row}' from {i}")
         if(i % 2 == 0):  # we only need every second row starting with string_table[0]
-            if(snmpresult[i + 1] == "fail"): # Giving Failed Datetime datetime of baselicense to avoid formatting errors
+            if(snmpresult[i + 1] == "fail"):  # Giving Failed Datetime datetime of baselicense to avoid formatting errors
                 snmpresult[i + 1] = "Dec 31 2999"
-            sopLic = SophosLicense(
+            parse_result[get_license_name(i, row).replace(" ","_").lower()] = SophosLicense(
                 LicenseStatus=SophosSubscriptionStatusType(int(row)),
                 LicenseExiprationDate = datetime.strptime(snmpresult[i +1], "%b %d %Y"),
-                LicenseLabel=get_license_name(i, row),
-                LicenseName=get_license_name(i, row).replace(" ","_").lower()
+                LicenseLabel=get_license_name(i, row)
             )
-            print(f"debug: LicenseObject: {sopLic}")
-            returnList.append(sopLic)
-    return returnList
+    return parse_result
+
+
+def discover_sophos_license(section: Section) -> DiscoveryResult:
+    for licname, soplic in section.items():
+        print(f"debug: {licname}")
+    yield from (Service(item=licname) for licname, soplic in section.items())
+
+
+def check_sophos_license(item: str, section: Section) -> CheckResult:
+    if item not in section:
+        return
+    soplic = section[item]
+    yield Result(
+        state=State.OK,
+        summary=f"debug: {soplic.LicenseStatus}"
+    )
+
 
 register.snmp_section(
-    name = "sophos_xg18_licensing",
+    name = "sophos_xg18_lics",
     detect = DETECT_SophosX18,
     fetch = SNMPTree(
         base = '.1.3.6.1.4.1.2604.5.1.5',
@@ -99,26 +112,9 @@ register.snmp_section(
 )
 
 
-def discover_sophos_license(section: List[SophosLicense]) -> DiscoveryResult:
-    section.pop(0)
-    for license in section:
-        if(hasattr(license, "LicenseName")):
-            print(f"debug: try to discover {license.LicenseName}")
-            yield Service(
-                item=license.LicenseName
-            )
-
-
-def check_sophos_license(section: List[SophosLicense]) -> CheckResult:
-    for license in section:
-        yield Result(
-            state=State.OK,
-            summary=f"Lic: {license.LicenseLabel}"
-        )
-
 register.check_plugin(
-    name="sophos_xg18_licensing",
-    service_name="SOPHOS Licensing",
+    name="sophos_xg18_lics",
+    service_name="Sop %s", # %s ist todes wichtig wenn es mehr als einen Service gibt...
     discovery_function=discover_sophos_license,
     check_function=check_sophos_license
 )
