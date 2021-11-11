@@ -19,11 +19,10 @@
 # .1.3.6.1.4.1.2604.5.1.5.8.2.0 fail --> SFOS-FIREWALL-MIB::sfosEnhancedPlusLicExpiryDate.0
 
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List
 
-from .agent_based_api.v1 import register, SNMPTree, Result, State, Service
+from .agent_based_api.v1 import register, SNMPTree, Result, State, Service, check_levels
 from .agent_based_api.v1.type_defs import StringTable, DiscoveryResult, CheckResult
-# from checkmk.cmk.base.api.agent_based.section_classes import SNMPTree
 from .sophos_types import DETECT_SophosX18, SophosLicense, SophosSubscriptionStatusType
 
 
@@ -67,21 +66,45 @@ def parse_snmp(string_table: StringTable) -> Section:
             )
     return parse_result
 
+# LÖSCHEN, nur für Beispiel noch hier
+# def discover_sophos_license(section: Section) -> DiscoveryResult:
+#     for licname in section:
+#         print(f"debug: {licname}")
+#     yield from (Service(item=licname) for licname in section)
 
 def discover_sophos_license(section: Section) -> DiscoveryResult:
-    for licname in section:
-        print(f"debug: {licname}")
-    yield from (Service(item=licname) for licname in section)
+    yield Service()
 
 
-def check_sophos_license(item: str, section: Section) -> CheckResult:
-    if item not in section:
-        return
-    soplic = section[item]
-    yield Result(
-        state=State.OK,
-        summary=f"debug: {soplic.LicenseStatus}"
-    )
+def check_sophos_license(section: Section) -> CheckResult:
+    activeLicenses:List[str] = []
+    expiredLicenses:List[str] = []
+    for key, lic in section.items():
+        if(lic.LicenseStatus == SophosSubscriptionStatusType.subscribed or lic.LicenseStatus == SophosSubscriptionStatusType.evaluating):
+            activeLicenses.append(lic.LicenseLabel)
+        if(lic.LicenseStatus == SophosSubscriptionStatusType.expired):
+            expiredLicenses.append(lic.LicenseLabel)
+    
+        # adding metric foreach subscription with warning levels
+        daysLeft:int = (lic.LicenseExiprationDate - datetime.now()).days # calc daysleft
+        yield from check_levels(
+            value=daysLeft,
+            metric_name=f"{key}_daysleft", # name is for example web_protection_daysleft
+            levels_lower=(30, 14) # Warn lower 30 days, Crit lower 14 Days
+        )
+
+
+    if(len(expiredLicenses) > 0):
+        yield Result(
+            state=State.CRIT,
+            summary="Licenses Expired!",
+            details=f"Expired Licenses: {','.join(expiredLicenses)}"
+        )
+    else:
+        yield Result(
+            state=State.OK,
+            summary=f"Active Licenses: {', '.join(activeLicenses)}"
+        )
 
 
 register.snmp_section(
@@ -114,7 +137,7 @@ register.snmp_section(
 
 register.check_plugin(
     name="sophos_xg18_lics",
-    service_name="Sop %s", # %s ist todes wichtig wenn es mehr als einen Service gibt...
+    service_name="Sophos Licensing", # %s ist todes wichtig wenn es mehr als einen Service gibt...
     discovery_function=discover_sophos_license,
     check_function=check_sophos_license
 )
