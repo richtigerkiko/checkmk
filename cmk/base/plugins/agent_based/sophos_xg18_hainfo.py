@@ -18,8 +18,8 @@
 from typing import Optional
 from .sophos_types import DETECT_SophosX18, SophosHAState, SophosHAStatus
 
-from .agent_based_api.v1 import register, SNMPTree, equals, all_of, startswith, not_equals, Service, Result, State, HostLabel, Metric, check_levels
-from .agent_based_api.v1.type_defs import CheckResult, DiscoveryResult, InventoryResult, StringTable, HostLabelGenerator
+from .agent_based_api.v1 import register, SNMPTree, equals, all_of, Service, Result, State, HostLabel, check_levels
+from .agent_based_api.v1.type_defs import CheckResult, DiscoveryResult, StringTable, HostLabelGenerator
 
 
 DETECT = all_of(
@@ -71,7 +71,8 @@ def check_sophos_hastatus(section: SophosHAStatus) -> CheckResult:
     yield from check_levels(
         value=section.MasterHaState.value,
         metric_name="ha_status",
-        boundaries=(0, 5)
+        boundaries=(0, 5),
+        notice_only=True
     )
     if(section.MasterHaState != SophosHAState.primary):
         yield Result(
