@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (C) 2021 Alexander Kiko - redhhouse GmbH - License: GNU General Public License v2
+# Copyright (C) 2021 Alexander Kiko - a.kiko@redhouse.de - redhhouse GmbH - License: GNU General Public License v2
 # .1.3.6.1.4.1.2604.5.1.5.1.1.0 3 --> SFOS-FIREWALL-MIB::sfosBaseFWLicRegStatus.0
 # .1.3.6.1.4.1.2604.5.1.5.1.2.0 Dec 31 2999 --> SFOS-FIREWALL-MIB::sfosBaseFWLicExpiryDate.0
 # .1.3.6.1.4.1.2604.5.1.5.2.1.0 1 --> SFOS-FIREWALL-MIB::sfosNetProtectionLicRegStatus.0
@@ -137,7 +137,7 @@ register.snmp_section(
 
 register.check_plugin(
     name="sophos_xg18_lics",
-    service_name="Sophos Licensing", # %s ist todes wichtig wenn es mehr als einen Service gibt...
+    service_name="Sophos Licensing",
     discovery_function=discover_sophos_license,
     check_function=check_sophos_license
 )

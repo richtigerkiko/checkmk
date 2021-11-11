@@ -101,3 +101,4 @@ web/htdocs/js/*_min.js.map
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
+cmk/base/plugins/agent_based/sophos_xg18_sitevpn.py
