@@ -90,7 +90,8 @@ def check_sophos_license(section: Section) -> CheckResult:
         yield from check_levels(
             value=daysLeft,
             metric_name=f"{key}_daysleft", # name is for example web_protection_daysleft
-            levels_lower=(30, 14) # Warn lower 30 days, Crit lower 14 Days
+            levels_lower=(30, 14), # Warn lower 30 days, Crit lower 14 Days
+            label=lic.LicenseLabel
         )
 
 
