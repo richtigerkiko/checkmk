@@ -12,7 +12,7 @@ class SophosHAState(Enum):
     notapplicable = 0
     auxiliary = 1
     standAlone = 2
-    primary = 3,
+    primary = 3
     faulty = 4
     ready = 5
 
