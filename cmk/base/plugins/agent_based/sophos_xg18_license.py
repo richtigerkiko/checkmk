@@ -21,7 +21,9 @@
 from datetime import datetime
 from typing import Dict, List
 
-from .agent_based_api.v1 import register, SNMPTree, Result, State, Service, check_levels
+from cmk.base.api.agent_based.checking_classes import Metric
+
+from .agent_based_api.v1 import register, SNMPTree, Result, State, Service, check_levels, render
 from .agent_based_api.v1.type_defs import StringTable, DiscoveryResult, CheckResult
 from .sophos_types import DETECT_SophosX18, SophosLicense, SophosSubscriptionStatusType
 
@@ -51,13 +53,14 @@ def get_license_name(i: int, row: str):  # function to get the license name from
         return f"Unknown license: {row}"
 
 
+
+
 def parse_snmp(string_table: StringTable) -> Section:
     snmpresult = string_table[0]  # fetched snmp data is array length 1 so wie just neet the first one
     parse_result:Section = {}  # init dictionary
     for i, row in enumerate(snmpresult):  # with this for loop i fill the parse_result dcitionary
-        print(f"debug: adding row '{row}' from {i}")
         if(i % 2 == 0):  # we only need every second row starting with string_table[0]
-            if(snmpresult[i + 1] == "fail"):  # Giving Failed Datetime datetime of baselicense to avoid formatting errors
+            if(snmpresult[i + 1] == "fail"):  # Giving "fail" Datetime datetime of baselicense to avoid formatting errors
                 snmpresult[i + 1] = "Dec 31 2999"
             parse_result[get_license_name(i, row).replace(" ","_").lower()] = SophosLicense(
                 LicenseStatus=SophosSubscriptionStatusType(int(row)),
@@ -66,46 +69,41 @@ def parse_snmp(string_table: StringTable) -> Section:
             )
     return parse_result
 
-# LÖSCHEN, nur für Beispiel noch hier
-# def discover_sophos_license(section: Section) -> DiscoveryResult:
-#     for licname in section:
-#         print(f"debug: {licname}")
-#     yield from (Service(item=licname) for licname in section)
-
 def discover_sophos_license(section: Section) -> DiscoveryResult:
-    yield Service()
+    for licName, licObj in section.items(): 
+        if((licObj.LicenseStatus == SophosSubscriptionStatusType.subscribed or 
+        licObj.LicenseStatus == SophosSubscriptionStatusType.expired or 
+        licObj.LicenseStatus == SophosSubscriptionStatusType.evaluating) and
+        licName != "baselicense"): # Only yield Service if License is active and pop baselicense because its forever
+            yield Service(item=licName)
 
-
-def check_sophos_license(section: Section) -> CheckResult:
-    activeLicenses:List[str] = []
-    expiredLicenses:List[str] = []
-    for key, lic in section.items():
-        if(lic.LicenseStatus == SophosSubscriptionStatusType.subscribed or lic.LicenseStatus == SophosSubscriptionStatusType.evaluating):
-            activeLicenses.append(lic.LicenseLabel)
-        if(lic.LicenseStatus == SophosSubscriptionStatusType.expired):
-            expiredLicenses.append(lic.LicenseLabel)
+def check_sophos_license(item: str, section: Section) -> CheckResult:
+    sopLic:SophosLicense = section[item]
+    daysLeft:int = (sopLic.LicenseExiprationDate - datetime.now()).days # calc daysleft
     
-        # adding metric foreach subscription with warning levels
-        daysLeft:int = (lic.LicenseExiprationDate - datetime.now()).days # calc daysleft
-        yield from check_levels(
-            value=daysLeft,
-            metric_name=f"{key}_daysleft", # name is for example web_protection_daysleft
-            levels_lower=(30, 14), # Warn lower 30 days, Crit lower 14 Days
-            label=lic.LicenseLabel
-        )
+    licDur:str=""
+    if(daysLeft > 730 ): # get metricname for 3y lic, to make the perf-o-meter nicer
+        licDur:str="3y"
+    elif(daysLeft > 365): # get metricname for 2y lic, to make the perf-o-meter nicer
+        licDur:str="2y"
+    else: # get metricname for 1y lic, to make the perf-o-meter nicer
+        licDur:str="1y"
 
+        if(daysLeft < 0):
+            daysLeft=0
 
-    if(len(expiredLicenses) > 0):
-        yield Result(
-            state=State.CRIT,
-            summary="Licenses Expired!",
-            details=f"Expired Licenses: {','.join(expiredLicenses)}"
-        )
-    else:
-        yield Result(
-            state=State.OK,
-            summary=f"Active Licenses: {', '.join(activeLicenses)}"
-        )
+    yield from check_levels(
+        value=daysLeft, # for timespan in seconds
+        metric_name=f"sophos_license_{licDur}", # generate sophos license name with license duration
+        levels_lower=(31,14), # 14 or 31 days error
+        label="Days Left",
+        notice_only=True
+    )
+
+    yield Result(
+        state=State.OK,
+        summary=f"Sophos license {sopLic.LicenseLabel} expires on {sopLic.LicenseExiprationDate.ctime()}"
+    )
 
 
 register.snmp_section(
@@ -138,7 +136,7 @@ register.snmp_section(
 
 register.check_plugin(
     name="sophos_xg18_lics",
-    service_name="Sophos Licensing",
+    service_name="SOPHOS License: %s",
     discovery_function=discover_sophos_license,
     check_function=check_sophos_license
 )
